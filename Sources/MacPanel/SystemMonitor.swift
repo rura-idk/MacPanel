@@ -150,10 +150,18 @@ final class SystemMonitor: ObservableObject {
             let ticks: [UInt64] = [UInt64(info.cpu_ticks.0), UInt64(info.cpu_ticks.1),
                                    UInt64(info.cpu_ticks.2), UInt64(info.cpu_ticks.3)]
             if let old = previousTicks {
-                let deltas = zip(ticks, old).map { current, before in
-                    current >= before ? current - before : current + (UInt64(UInt32.max) + 1) - before
+                var deltas: [UInt64] = []
+                let counterRange: UInt64 = UInt64(UInt32.max) + 1
+                for (current, before) in zip(ticks, old) {
+                    let delta: UInt64
+                    if current >= before {
+                        delta = current - before
+                    } else {
+                        delta = (counterRange - before) + current
+                    }
+                    deltas.append(delta)
                 }
-                let total = deltas.reduce(0, +)
+                let total: UInt64 = deltas.reduce(0, +)
                 if total > 0 { cpuPercent = 100 * Double(total - deltas[2]) / Double(total) }
             }
             previousTicks = ticks
