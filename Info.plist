@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key><string>ru</string>
+    <key>CFBundleExecutable</key><string>MacPanel</string>
+    <key>CFBundleIdentifier</key><string>local.macpanel.utility</string>
+    <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+    <key>CFBundleName</key><string>MacPanel</string>
+    <key>CFBundleDisplayName</key><string>MacPanel</string>
+    <key>CFBundlePackageType</key><string>APPL</string>
+    <key>CFBundleShortVersionString</key><string>0.9.3</string>
+    <key>CFBundleVersion</key><string>12</string>
+    <!-- When sponsorship is set up, add MacPanelDonationURL with its real HTTPS URL. -->
+    <key>CFBundleIconFile</key><string>MacPanel</string>
+    <key>LSMinimumSystemVersion</key><string>14.0</string>
+    <key>LSUIElement</key><true/>
+    <key>NSHighResolutionCapable</key><true/>
+</dict>
+</plist>

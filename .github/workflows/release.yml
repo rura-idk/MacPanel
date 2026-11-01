@@ -1,0 +1,77 @@
+# Public release only after passing hands-on macOS testing.
+# Requires developer certificate + App Store Connect API private key secrets.
+name: Publish signed notarized DMG
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (for example v0.9.4)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  signed-release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate settings
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          BUNDLE_ID: ${{ vars.MACPANEL_BUNDLE_ID }}
+          DEVELOPER_ID: ${{ secrets.MACPANEL_DEVELOPER_ID }}
+        run: |
+          [[ "$RELEASE_TAG" == v* ]] || { echo 'Release tag must start with v' >&2; exit 1; }
+          [[ "$BUNDLE_ID" == *.* && "$BUNDLE_ID" != local.macpanel.utility ]] || { echo 'Configure a unique MACPANEL_BUNDLE_ID repository variable' >&2; exit 1; }
+          [[ -n "$DEVELOPER_ID" ]] || { echo 'Missing Developer ID Application identity' >&2; exit 1; }
+      - name: Install Developer ID certificate in temporary keychain
+        env:
+          P12_BASE64: ${{ secrets.MACPANEL_DEVELOPER_ID_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.MACPANEL_DEVELOPER_ID_P12_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.MACPANEL_CI_KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN="$RUNNER_TEMP/macpanel-signing.keychain-db"
+          echo "KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
+          printf '%s' "$P12_BASE64" | base64 -D > "$RUNNER_TEMP/signing.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -t 21600 -u "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN"
+          security import "$RUNNER_TEMP/signing.p12" -k "$KEYCHAIN" -P "$P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
+          rm -f "$RUNNER_TEMP/signing.p12"
+      - name: Build Developer ID-signed app and DMG
+        env:
+          MACPANEL_ARCH: arm64
+          MACPANEL_SIGN_IDENTITY: ${{ secrets.MACPANEL_DEVELOPER_ID }}
+          MACPANEL_BUNDLE_ID: ${{ vars.MACPANEL_BUNDLE_ID }}
+        run: |
+          ./build.sh
+          ./scripts/make-dmg.sh
+      - name: Submit DMG for notarization
+        env:
+          ASC_API_KEY_P8: ${{ secrets.MACPANEL_ASC_API_KEY_P8 }}
+          ASC_API_KEY_ID: ${{ secrets.MACPANEL_ASC_API_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.MACPANEL_ASC_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          KEYFILE="$RUNNER_TEMP/AuthKey_${ASC_API_KEY_ID}.p8"
+          printf '%s' "$ASC_API_KEY_P8" > "$KEYFILE"
+          xcrun notarytool submit dist/MacPanel.dmg --key "$KEYFILE" --key-id "$ASC_API_KEY_ID" --issuer "$ASC_ISSUER_ID" --wait
+          rm -f "$KEYFILE"
+          xcrun stapler staple dist/MacPanel.dmg
+          xcrun stapler validate dist/MacPanel.dmg
+          spctl -a -t open --context context:primary-signature -v dist/MacPanel.dmg
+      - name: Release checksum
+        run: shasum -a 256 dist/MacPanel.dmg > dist/SHA256SUMS.txt
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          gh release create "$RELEASE_TAG" dist/MacPanel.dmg dist/SHA256SUMS.txt \
+            --title "MacPanel $RELEASE_TAG" --notes "Signed and notarized macOS app. Drag MacPanel.app to Applications and open once."
